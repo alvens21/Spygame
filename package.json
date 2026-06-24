@@ -6,21 +6,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
     "react-confetti": "^6.4.0",
+    "react-dom": "19.2.4",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "eslint": "^8",
+    "@types/react": "19.2.17",
+    "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4"
   }
