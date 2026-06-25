@@ -47,7 +47,9 @@ export default function GameRoom() {
 
   // ✅ Detect mobile screen
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -395,6 +397,29 @@ export default function GameRoom() {
     
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: isMobile ? '10px' : '16px', color: 'white' }}>
+        {/* 🔴 MOBILE MODE INDICATOR */}
+        {isMobile && (
+          <div style={{
+            position: 'fixed',
+            top: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#ef4444',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            zIndex: 9999,
+            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
+            border: '2px solid white',
+            textTransform: 'uppercase',
+            letterSpacing: '1px'
+          }}>
+            📱 MOBILE MODE - Columns Stacked
+          </div>
+        )}
+        
         <style>{`
           @keyframes shine { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
           @keyframes championPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
@@ -403,16 +428,24 @@ export default function GameRoom() {
           @keyframes confettiFall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
           @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
           
-          /* ✅ Mobile Responsive Classes */
+          /* ✅ Mobile Responsive Classes with RED BORDER */
           .admin-grid {
             display: grid;
             gap: 16px;
+            transition: all 0.3s ease;
           }
           @media (min-width: 768px) {
             .admin-grid { grid-template-columns: 1fr 1fr 1fr; }
           }
           @media (max-width: 767px) {
-            .admin-grid { grid-template-columns: 1fr; }
+            .admin-grid { 
+              grid-template-columns: 1fr;
+              /* 🔴 RED BORDER FOR MOBILE */
+              outline: 4px solid #ef4444;
+              outline-offset: 8px;
+              border-radius: 8px;
+              background: rgba(239, 68, 68, 0.05);
+            }
           }
           
           .podium-container {
@@ -445,7 +478,14 @@ export default function GameRoom() {
             .player-grid { grid-template-columns: 1fr 2fr; }
           }
           @media (max-width: 767px) {
-            .player-grid { grid-template-columns: 1fr; }
+            .player-grid { 
+              grid-template-columns: 1fr;
+              /* 🔴 RED BORDER FOR MOBILE */
+              outline: 4px solid #ef4444;
+              outline-offset: 8px;
+              border-radius: 8px;
+              background: rgba(239, 68, 68, 0.05);
+            }
           }
           
           .vote-grid {
@@ -807,6 +847,29 @@ export default function GameRoom() {
   // ==================== PLAYER UI ====================
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: isMobile ? '10px' : '16px', color: 'white' }}>
+      {/* 🔴 MOBILE MODE INDICATOR */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed',
+          top: '10px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#ef4444',
+          color: 'white',
+          padding: '8px 16px',
+          borderRadius: '20px',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          zIndex: 9999,
+          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
+          border: '2px solid white',
+          textTransform: 'uppercase',
+          letterSpacing: '1px'
+        }}>
+          📱 MOBILE MODE - Columns Stacked
+        </div>
+      )}
+      
       <style>{`
         @keyframes shine { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
         @keyframes championPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
@@ -817,7 +880,16 @@ export default function GameRoom() {
         
         .player-grid { display: grid; gap: 16px; }
         @media (min-width: 768px) { .player-grid { grid-template-columns: 1fr 2fr; } }
-        @media (max-width: 767px) { .player-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 767px) { 
+          .player-grid { 
+            grid-template-columns: 1fr;
+            /* 🔴 RED BORDER FOR MOBILE */
+            outline: 4px solid #ef4444;
+            outline-offset: 8px;
+            border-radius: 8px;
+            background: rgba(239, 68, 68, 0.05);
+          }
+        }
         
         .vote-grid { display: grid; gap: 10px; }
         @media (min-width: 768px) { .vote-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
@@ -1157,4 +1229,3 @@ export default function GameRoom() {
     </div>
   );
 }
-// Force deploy trigger
