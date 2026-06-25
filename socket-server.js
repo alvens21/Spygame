@@ -2,7 +2,9 @@
 require('dotenv').config();
 const { Server } = require('socket.io');
 
-const io = new Server(3001, { 
+const PORT = process.env.PORT || 3001;
+
+const io = new Server(PORT, { 
   cors: { origin: "*", methods: ["GET", "POST"] } 
 });
 
@@ -549,4 +551,4 @@ io.on('connection', (socket) => {
   });
 });
 
-console.log('🚀 Socket Server running on port 3001');
+console.log(`🚀 Socket Server running on port ${PORT}`);
