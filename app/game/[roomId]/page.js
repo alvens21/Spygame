@@ -400,6 +400,7 @@ export default function GameRoom() {
         {/* 🔴 MOBILE MODE INDICATOR */}
         {isMobile && (
           <div style={{
+            display: 'none',
             position: 'fixed',
             top: '10px',
             left: '50%',
