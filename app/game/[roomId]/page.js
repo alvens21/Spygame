@@ -1228,4 +1228,4 @@ export default function GameRoom() {
       )}
     </div>
   );
-}
+}// Mobile fix Thu Jun 25 17:19:45 CST 2026
