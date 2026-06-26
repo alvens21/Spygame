@@ -10,22 +10,20 @@ const io = new Server(PORT, {
 
 const rooms = {};
 
-// ✅ NEW: Calculate number of spies based on player count
 function calculateSpyCount(playerCount) {
   if (playerCount >= 10) return 2;
   return 1;
 }
 
-// ✅ NEW: Calculate time duration based on player count
 function calculateTimeDuration(playerCount) {
-  if (playerCount <= 5) return 180; // 3 mins
-  if (playerCount <= 10) return 360; // 6 mins
-  if (playerCount <= 15) return 480; // 8 mins
-  if (playerCount <= 20) return 600; // 10 mins
-  if (playerCount <= 30) return 900; // 15 mins
-  if (playerCount <= 40) return 1200; // 20 mins
-  if (playerCount <= 50) return 1500; // 25 mins
-  return 1800; // 30 mins for 51-60 players
+  if (playerCount <= 5) return 180;
+  if (playerCount <= 10) return 360;
+  if (playerCount <= 15) return 480;
+  if (playerCount <= 20) return 600;
+  if (playerCount <= 30) return 900;
+  if (playerCount <= 40) return 1200;
+  if (playerCount <= 50) return 1500;
+  return 1800;
 }
 
 function calculateMaxRounds(playerCount) {
@@ -172,8 +170,7 @@ io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id);
 
   socket.on('join-room', ({ roomId, username, avatar, isAdmin }) => {
-    console.log(`🚪 ${username} joining room: ${roomId}`);
-    console.log(`   - Avatar in join: ${avatar ? 'set' : 'null'}`);
+    console.log(` ${username} joining room: ${roomId}`);
     
     if (!rooms[roomId]) {
       rooms[roomId] = { 
@@ -182,7 +179,7 @@ io.on('connection', (socket) => {
         status: 'lobby', 
         votes: {}, 
         voteOrder: [],
-        spyIds: [], // ✅ Changed to array for multiple spies
+        spyIds: [],
         currentWord: null, 
         usedWords: [],
         hostId: null, 
@@ -201,11 +198,9 @@ io.on('connection', (socket) => {
     const existingPlayerIndex = room.players.findIndex(p => p.id === socket.id);
     
     if (existingPlayerIndex !== -1) {
-      console.log(`   - Updating existing player`);
       room.players[existingPlayerIndex].username = username;
       if (avatar) room.players[existingPlayerIndex].avatar = avatar;
     } else if (!room.adminId) {
-      console.log(`   - First player! Becoming ADMIN 👑`);
       room.adminId = socket.id;
       room.hostId = socket.id;
       room.players.push({ 
@@ -218,7 +213,6 @@ io.on('connection', (socket) => {
         votedFor: null 
       });
     } else {
-      console.log(`   - Adding as normal player`);
       room.players.push({ 
         id: socket.id, 
         username, 
@@ -233,15 +227,12 @@ io.on('connection', (socket) => {
     const playerCount = room.players.filter(p => !p.isAdmin).length;
     room.maxRounds = calculateMaxRounds(playerCount);
     room.spyCount = calculateSpyCount(playerCount);
-    console.log(`   - Player count: ${playerCount}, Max rounds: ${room.maxRounds}, Spies: ${room.spyCount}`);
     
     socket.join(roomId);
-    console.log(`   - Socket joined room ${roomId}`);
     
     broadcastRoomState(roomId);
     
     const isNowAdmin = socket.id === room.adminId;
-    console.log(`   - Sending joined-success to ${username} (isAdmin: ${isNowAdmin})`);
     socket.emit('joined-success', { 
       roomId, 
       username,
@@ -250,27 +241,16 @@ io.on('connection', (socket) => {
       spyCount: room.spyCount,
       timeDuration: calculateTimeDuration(playerCount)
     });
-    
-    console.log(`✅ ${username} successfully joined room ${roomId}\n`);
   });
 
   socket.on('update-avatar', ({ roomId, avatar }) => {
-    console.log(`📸 Avatar update from ${socket.id} in room ${roomId}`);
-    console.log(`   - Avatar length: ${avatar ? avatar.length : 0} chars`);
-    
     const room = rooms[roomId];
-    if (!room) {
-      console.log(`   - ❌ Room not found`);
-      return;
-    }
+    if (!room) return;
     
     const player = room.players.find(p => p.id === socket.id);
     if (player) {
       player.avatar = avatar;
-      console.log(`   - ✅ Avatar updated for ${player.username}`);
       broadcastRoomState(roomId);
-    } else {
-      console.log(`   - ❌ Player not found in room`);
     }
   });
 
@@ -288,8 +268,7 @@ io.on('connection', (socket) => {
     room.spyCount = calculateSpyCount(playerCount);
     const timeDuration = calculateTimeDuration(playerCount);
 
-    console.log(`🎮 Starting Round ${room.currentRound}/${room.maxRounds} - ${category} ${difficulty}`);
-    console.log(`   - Players: ${playerCount}, Spies: ${room.spyCount}, Time: ${timeDuration}s`);
+    console.log(`🎮 Starting Round ${room.currentRound}/${room.maxRounds}`);
     
     io.to(roomId).emit('game-loading', { 
       message: `🤖 AI is generating unique words... (Round ${room.currentRound}/${room.maxRounds})` 
@@ -297,7 +276,6 @@ io.on('connection', (socket) => {
 
     try {
       const wordData = await generateWordsWithAI(category, difficulty, room.usedWords || []);
-      console.log('✅ Final words:', wordData);
 
       if (!room.usedWords) room.usedWords = [];
       room.usedWords.push(wordData.normalWord, wordData.spyWord);
@@ -309,18 +287,16 @@ io.on('connection', (socket) => {
       room.votes = {};
       room.voteOrder = [];
       room.currentWord = wordData;
-      room.timeRemaining = timeDuration; // ✅ Use dynamic time
+      room.timeRemaining = timeDuration;
 
       const gamePlayers = room.players.filter(p => !p.isAdmin);
       
-      // ✅ SELECT MULTIPLE SPIES
       const shuffled = shuffleArray(gamePlayers);
       room.spyIds = [];
       
       for (let i = 0; i < room.spyCount; i++) {
         const spyPlayer = shuffled[i];
         room.spyIds.push(spyPlayer.id);
-        console.log(`🕵️ Spy ${i + 1}: ${spyPlayer.username}`);
       }
 
       room.players.forEach(p => {
@@ -361,7 +337,6 @@ io.on('connection', (socket) => {
         timeDuration: timeDuration
       });
       
-      console.log('📤 Sent to clients - Normal:', room.currentWord.normalWord, 'Spy:', room.currentWord.spyWord);
     } catch (error) {
       console.error('❌ Failed to start round:', error.message);
       io.to(room.adminId).emit('game-error', { 
@@ -372,7 +347,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ✅ UPDATED: Anyone can vote (including spies)
   socket.on('cast-vote', ({ roomId, targetId }) => {
     const room = rooms[roomId];
     const voter = room.players.find(p => p.id === socket.id && !p.isAdmin);
@@ -395,7 +369,6 @@ io.on('connection', (socket) => {
       if (voteCounts[t] !== undefined) voteCounts[t]++; 
     });
 
-    // ✅ All players voted (including spies)
     const allVoted = Object.keys(room.votes).length === playersOnly.length && playersOnly.length > 0;
     
     let unanimousVote = null;
@@ -405,8 +378,6 @@ io.on('connection', (socket) => {
         unanimousVote = firstVote;
       }
     }
-
-    console.log(`📊 Votes: ${Object.keys(room.votes).length}/${playersOnly.length} players voted`);
 
     if (room.adminId) {
       io.to(room.adminId).emit('vote-update', { 
@@ -446,38 +417,35 @@ io.on('connection', (socket) => {
       if (voteCounts[t] !== undefined) voteCounts[t]++; 
     });
     
-    // ✅ Find most voted player
+    // Find most voted player
     const sorted = Object.entries(voteCounts).sort((a,b) => b[1] - a[1]);
     const mostVotedId = sorted[0]?.[0];
     
-    // ✅ Check if most voted is a spy
+    // ✅ FIXED: Spy is caught if they have the MOST votes
     const spyCaught = room.spyIds.includes(mostVotedId);
 
     const basePoints = getBasePoints(room.currentRound);
     const spyEscapePoints = basePoints * 2;
     
-    console.log(`🏁 Round ${room.currentRound} ended - Base: ${basePoints}pts, Spy escape: ${spyEscapePoints}pts`);
+    console.log(`🏁 Round ${room.currentRound} ended`);
     console.log(`   - Most voted: ${mostVotedId}, Spy caught: ${spyCaught}`);
     
-    // ✅ SCORING LOGIC: Anyone who voted for a spy gets points
+    // ✅ FIXED SCORING: Only give points to players who voted for spy
     room.voteOrder.forEach(vote => {
       const voter = room.players.find(p => p.id === vote.voterId);
       if (!voter) return;
       
-      // ✅ If voted for a spy, get points
+      // If voted for a spy, get points
       if (room.spyIds.includes(vote.targetId)) {
-        const bonusPercentage = 100; // Can add bonus logic later
-        const totalPoints = basePoints;
-        voter.totalScore += Math.round(totalPoints);
-        console.log(`✅ ${voter.username} voted for SPY → gets ${Math.round(totalPoints)} pts`);
+        voter.totalScore += basePoints;
+        console.log(`✅ ${voter.username} voted for SPY → gets ${basePoints} pts`);
       } else {
         console.log(`❌ ${voter.username} voted for NORMAL → gets 0 pts`);
       }
     });
     
-    // ✅ Spy scoring
+    // ✅ FIXED: Spy only gets points if NOT caught
     if (spyCaught) {
-      // All spies caught get 0 points
       room.spyIds.forEach(spyId => {
         const spyPlayer = room.players.find(p => p.id === spyId);
         if (spyPlayer) {
@@ -485,7 +453,6 @@ io.on('connection', (socket) => {
         }
       });
     } else {
-      // All spies escape and get points
       room.spyIds.forEach(spyId => {
         const spyPlayer = room.players.find(p => p.id === spyId);
         if (spyPlayer) {
@@ -498,7 +465,7 @@ io.on('connection', (socket) => {
     const isGameOver = room.currentRound >= room.maxRounds;
 
     io.to(roomId).emit('round-ended', {
-      spyIds: room.spyIds, // ✅ Changed to array
+      spyIds: room.spyIds,
       spyCaught, 
       normalWord: room.currentWord.normalWord, 
       spyWord: room.currentWord.spyWord,
@@ -567,4 +534,4 @@ io.on('connection', (socket) => {
   });
 });
 
-console.log(`🚀 Socket Server running on port ${PORT}`);
+console.log(` Socket Server running on port ${PORT}`);

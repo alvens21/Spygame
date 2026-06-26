@@ -41,11 +41,12 @@ export default function GameRoom() {
   const [basePoints, setBasePoints] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [spyCount, setSpyCount] = useState(1);
+  const [timeDuration, setTimeDuration] = useState(300);
   
   const [adminWords, setAdminWords] = useState({ normalWord: '', spyWord: '' });
   const fileInputRef = useRef(null);
 
-  // ✅ Detect mobile screen
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
@@ -106,7 +107,6 @@ export default function GameRoom() {
           ctx.drawImage(img, 0, 0, width, height);
           
           const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-          console.log('✅ Compressed avatar:', compressedBase64.length, 'chars');
           resolve(compressedBase64);
         };
         img.onerror = reject;
@@ -120,12 +120,11 @@ export default function GameRoom() {
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      console.log('📸 Uploading avatar:', file.name, 'Size:', file.size);
       try {
         const compressed = await compressImage(file, 100, 100, 0.7);
         setAvatar(compressed);
       } catch (error) {
-        console.error('❌ Error compressing image:', error);
+        console.error(' Error compressing image:', error);
         alert('Error processing image');
       }
     }
@@ -138,6 +137,8 @@ export default function GameRoom() {
     setMaxRounds(data.maxRounds || 3);
     setGameStatus(data.status || 'lobby');
     setAllVoted(data.allVoted || false);
+    setSpyCount(data.spyCount || 1);
+    setTimeDuration(data.timeDuration || 300);
     
     if (data.isAdmin) {
       setIsAdmin(true);
@@ -150,13 +151,14 @@ export default function GameRoom() {
   const handleRoundStarted = useCallback((data) => {
     setGameStatus('playing');
     setCategory(data.category);
-    setTimeRemaining(300);
+    setTimeRemaining(data.timeDuration || 300);
     setIsLoading(false);
     setResult(null);
     setVoteCounts({});
     setMyVote(null);
     setMaxRounds(data.maxRounds || 3);
     setBasePoints(data.basePoints || 0);
+    setSpyCount(data.spyCount || 1);
     if (data.normalWord && data.spyWord) {
       setAdminWords({ normalWord: data.normalWord, spyWord: data.spyWord });
     }
@@ -165,12 +167,14 @@ export default function GameRoom() {
   const handleYourRole = useCallback((data) => {
     setMyRole(data.role);
     setMyWord(data.word);
+    setSpyCount(data.spyCount || 1);
   }, []);
 
   const handleRoundEnded = useCallback((data) => {
     setGameStatus('round-ended');
     setResult(data);
     setBasePoints(data.basePoints || 0);
+    setSpyCount(data.spyCount || 1);
   }, []);
 
   const handleNextRoundReady = useCallback((data) => {
@@ -224,6 +228,8 @@ export default function GameRoom() {
     socket.on('joined-success', (data) => {
       setIsAdmin(data?.isAdmin || false);
       if (data?.maxRounds) setMaxRounds(data.maxRounds);
+      if (data?.spyCount) setSpyCount(data.spyCount);
+      if (data?.timeDuration) setTimeDuration(data.timeDuration);
     });
     socket.on('game-loading', () => setIsLoading(true));
     socket.on('round-started', handleRoundStarted);
@@ -272,6 +278,10 @@ export default function GameRoom() {
 
   const handleResetGame = () => {
     router.push('/');
+  };
+
+  const handleBackToHome = () => {
+    window.location.href = '/';
   };
 
   const confirmVote = () => {
@@ -396,31 +406,7 @@ export default function GameRoom() {
     const normalPlayersOnly = players.filter(p => !p.isAdmin);
     
     return (
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: isMobile ? '10px' : '16px', color: 'white' }}>
-        {/* 🔴 MOBILE MODE INDICATOR */}
-        {isMobile && (
-          <div style={{
-            display: 'none',
-            position: 'fixed',
-            top: '10px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#ef4444',
-            color: 'white',
-            padding: '8px 16px',
-            borderRadius: '20px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            zIndex: 9999,
-            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
-            border: '2px solid white',
-            textTransform: 'uppercase',
-            letterSpacing: '1px'
-          }}>
-            📱 MOBILE MODE - Columns Stacked
-          </div>
-        )}
-        
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: isMobile ? '10px' : '16px', color: 'white', display: 'flex', flexDirection: 'column' }}>
         <style>{`
           @keyframes shine { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
           @keyframes championPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
@@ -428,8 +414,8 @@ export default function GameRoom() {
           @keyframes podiumSlide { 0% { transform: translateY(40px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
           @keyframes confettiFall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
           @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+          @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.02); opacity: 0.9; } }
           
-          /* ✅ Mobile Responsive Classes with RED BORDER */
           .admin-grid {
             display: grid;
             gap: 16px;
@@ -441,11 +427,6 @@ export default function GameRoom() {
           @media (max-width: 767px) {
             .admin-grid { 
               grid-template-columns: 1fr;
-              /* 🔴 RED BORDER FOR MOBILE */
-              outline: 4px solid #ef4444;
-              outline-offset: 8px;
-              border-radius: 8px;
-              background: rgba(239, 68, 68, 0.05);
             }
           }
           
@@ -468,24 +449,6 @@ export default function GameRoom() {
             .podium-item {
               width: 100% !important;
               max-width: 280px !important;
-            }
-          }
-          
-          .player-grid {
-            display: grid;
-            gap: 16px;
-          }
-          @media (min-width: 768px) {
-            .player-grid { grid-template-columns: 1fr 2fr; }
-          }
-          @media (max-width: 767px) {
-            .player-grid { 
-              grid-template-columns: 1fr;
-              /* 🔴 RED BORDER FOR MOBILE */
-              outline: 4px solid #ef4444;
-              outline-offset: 8px;
-              border-radius: 8px;
-              background: rgba(239, 68, 68, 0.05);
             }
           }
           
@@ -514,7 +477,7 @@ export default function GameRoom() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: isMobile ? '12px' : '14px', fontWeight: 'bold', color: '#eab308' }}>{username}</div>
-              <div style={{ fontSize: '11px', color: '#9ca3af' }}>👑 Admin</div>
+              <div style={{ fontSize: '11px', color: '#9ca3af' }}> Admin</div>
             </div>
             <div style={{ 
               width: isMobile ? '36px' : '40px', 
@@ -553,7 +516,6 @@ export default function GameRoom() {
             </h2>
             
             <div className="podium-container" style={{ background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)', borderRadius: '16px' }}>
-              {/* Champion First on Mobile */}
               {isMobile && sortedPlayers[0] && (
                 <div className="podium-item" style={{ 
                   width: '100%', maxWidth: '280px', padding: '20px',
@@ -572,7 +534,6 @@ export default function GameRoom() {
                 </div>
               )}
               
-              {/* 2nd Place */}
               {sortedPlayers[1] && (
                 <div className="podium-item" style={{ 
                   flex: 1, maxWidth: isMobile ? '280px' : '180px', padding: isMobile ? '16px' : '20px',
@@ -588,7 +549,6 @@ export default function GameRoom() {
                 </div>
               )}
               
-              {/* 1st Place (Desktop) */}
               {!isMobile && sortedPlayers[0] && (
                 <div className="podium-item" style={{ 
                   flex: 1, maxWidth: '220px', padding: '24px',
@@ -598,7 +558,7 @@ export default function GameRoom() {
                   boxShadow: '0 8px 32px rgba(234, 179, 8, 0.5), 0 0 60px rgba(234, 179, 8, 0.3)',
                   border: '3px solid #fbbf24', position: 'relative', zIndex: 10
                 }}>
-                  <div style={{ position: 'absolute', top: '-30px', left: '50%', transform: 'translateX(-50%)', fontSize: '48px', animation: 'crownFloat 2s ease-in-out infinite' }}>👑</div>
+                  <div style={{ position: 'absolute', top: '-30px', left: '50%', transform: 'translateX(-50%)', fontSize: '48px', animation: 'crownFloat 2s ease-in-out infinite' }}></div>
                   <AvatarDisplay player={sortedPlayers[0]} size={60} border="3px solid #fbbf24" glow={true} />
                   <div style={{ fontSize: '64px', margin: '8px 0' }}>🥇</div>
                   <div style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '8px', color: 'white' }}>{sortedPlayers[0].username}</div>
@@ -607,7 +567,6 @@ export default function GameRoom() {
                 </div>
               )}
               
-              {/* 3rd Place */}
               {sortedPlayers[2] && (
                 <div className="podium-item" style={{ 
                   flex: 1, maxWidth: isMobile ? '280px' : '180px', padding: isMobile ? '16px' : '20px',
@@ -644,11 +603,11 @@ export default function GameRoom() {
           </div>
         )}
         
-        <div className="admin-grid">
+        <div className="admin-grid" style={{ flex: 1 }}>
           {/* COLUMN 1: Players List */}
           <div style={{ background: '#2d2d44', padding: isMobile ? '16px' : '20px', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
             <h2 style={{ margin: '0 0 16px', fontSize: isMobile ? '16px' : '18px', color: '#eab308' }}>
-              Players ({normalPlayersOnly.length})
+              Players ({normalPlayersOnly.length}) • {spyCount} {spyCount > 1 ? 'Spies' : 'Spy'}
             </h2>
             
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -711,7 +670,7 @@ export default function GameRoom() {
                 )}
 
                 <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '6px', textAlign: 'center', fontSize: '12px', color: '#a855f7' }}>
-                  📊 {normalPlayersOnly.length} players = {maxRounds} rounds
+                  📊 {normalPlayersOnly.length} players = {maxRounds} rounds • {spyCount} {spyCount > 1 ? 'Spies' : 'Spy'} • {formatTime(timeDuration)}
                 </div>
               </>
             )}
@@ -722,13 +681,35 @@ export default function GameRoom() {
                   <div style={{ fontSize: isMobile ? '28px' : '36px', fontWeight: 'bold', color: timeRemaining < 60 ? '#ef4444' : 'white', marginBottom: '6px' }}>
                     ⏱️ {formatTime(timeRemaining)}
                   </div>
-                  <p style={{ color: '#9ca3af', fontSize: '13px' }}>Round in progress...</p>
+                  <p style={{ color: '#9ca3af', fontSize: '13px' }}>
+                    Round in progress • {spyCount} {spyCount > 1 ? 'Spies' : 'Spy'} hiding
+                  </p>
                   {basePoints > 0 && (
                     <p style={{ color: '#eab308', fontSize: '12px', marginTop: '4px' }}>
                       💰 Base: {basePoints} pts | Spy escape: {basePoints * 2} pts
                     </p>
                   )}
                 </div>
+
+                {/* ✅ BACK TO HOME BUTTON */}
+                <button 
+                  onClick={handleBackToHome}
+                  style={{ 
+                    width: '100%', 
+                    padding: '12px', 
+                    background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '8px', 
+                    fontSize: '14px', 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer',
+                    marginBottom: '16px',
+                    boxShadow: '0 4px 12px rgba(107, 114, 128, 0.4)'
+                  }}
+                >
+                  🏠 Back to Home
+                </button>
                 
                 <div style={{ background: 'rgba(168, 85, 247, 0.1)', padding: isMobile ? '12px' : '16px', borderRadius: '10px', marginBottom: '16px', border: '1px solid #a855f7' }}>
                   <h3 style={{ margin: '0 0 12px', color: '#a855f7', textAlign: 'center', fontSize: '14px' }}>🔐 Secret Words</h3>
@@ -746,10 +727,13 @@ export default function GameRoom() {
                   </div>
                 </div>
 
+                {/* ✅ REAL-TIME VOTING CHART */}
                 {Object.keys(voteCounts).length > 0 && (
                   <div style={{ background: '#1a1a2e', padding: isMobile ? '12px' : '16px', borderRadius: '10px', marginBottom: '16px' }}>
-                    <h3 style={{ margin: '0 0 12px', color: '#a855f7', textAlign: 'center', fontSize: '14px' }}>📊 Real-Time Voting</h3>
-                    <div style={{ display: 'grid', gap: '10px' }}>
+                    <h3 style={{ margin: '0 0 16px', color: '#a855f7', textAlign: 'center', fontSize: '14px' }}>
+                      📊 Real-Time Voting ({Object.values(voteCounts).reduce((a,b) => a+b, 0)}/{normalPlayersOnly.length} votes)
+                    </h3>
+                    <div style={{ display: 'grid', gap: '12px' }}>
                       {normalPlayersOnly.map(player => {
                         const votes = voteCounts[player.id] || 0;
                         const totalVotes = Object.values(voteCounts).reduce((sum, v) => sum + v, 0);
@@ -757,24 +741,31 @@ export default function GameRoom() {
                         const isSpy = player.role === 'SPY';
                         
                         return (
-                          <div key={player.id} style={{
-                            padding: '6px',
-                            background: isSpy ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.02)',
-                            borderRadius: '6px',
-                            border: isSpy ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid transparent'
-                          }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', gap: '8px' }}>
-                              <span style={{ fontWeight: 'bold', color: isSpy ? '#ef4444' : 'white', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {player.username} {isSpy && '🕵️'}
+                          <div key={player.id}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                              <span style={{ fontWeight: 'bold', color: isSpy ? '#ef4444' : 'white', fontSize: '14px' }}>
+                                {player.username} {isSpy && '️'}
                               </span>
-                              <span style={{ color: '#eab308', fontWeight: 'bold', fontSize: '13px', flexShrink: 0 }}>{votes} vote{votes !== 1 ? 's' : ''}</span>
+                              <span style={{ color: '#eab308', fontWeight: 'bold', fontSize: '14px' }}>
+                                {votes} vote{votes !== 1 ? 's' : ''}
+                              </span>
                             </div>
-                            <div style={{ background: '#2d2d44', borderRadius: '6px', height: '20px', overflow: 'hidden' }}>
+                            <div style={{ 
+                              background: '#2d2d44', 
+                              borderRadius: '8px', 
+                              height: '32px', 
+                              overflow: 'hidden',
+                              border: isSpy ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(168, 85, 247, 0.2)'
+                            }}>
                               <div style={{ 
                                 width: `${percentage}%`,
-                                background: isSpy ? 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(90deg, #a855f7 0%, #ec4899 100%)',
+                                background: isSpy 
+                                  ? 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)' 
+                                  : 'linear-gradient(90deg, #a855f7 0%, #ec4899 100%)',
                                 height: '100%',
-                                transition: 'width 0.3s ease'
+                                transition: 'width 0.5s ease',
+                                borderRadius: '8px',
+                                opacity: votes > 0 ? 1 : 0.3
                               }} />
                             </div>
                           </div>
@@ -784,9 +775,37 @@ export default function GameRoom() {
                   </div>
                 )}
 
+                {/* ✅ SCORING STRUCTURE */}
+                <div style={{ background: 'rgba(234, 179, 8, 0.1)', padding: '12px', borderRadius: '10px', marginBottom: '16px', border: '1px solid #eab308' }}>
+                  <h3 style={{ margin: '0 0 8px', color: '#eab308', textAlign: 'center', fontSize: '14px' }}>
+                    💰 Scoring Structure
+                  </h3>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center' }}>
+                    <p style={{ margin: '4px 0' }}>✅ Vote for Spy: <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{basePoints} pts</span></p>
+                    <p style={{ margin: '4px 0' }}>❌ Vote for Normal: <span style={{ color: '#ef4444', fontWeight: 'bold' }}>0 pts</span></p>
+                    <p style={{ margin: '4px 0' }}>🕵️ Spy Escapes: <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{basePoints * 2} pts each</span></p>
+                  </div>
+                </div>
+
+                {/* ✅ PROCEED BUTTON */}
                 {allVoted && (
-                  <button onClick={handleProceed} style={{ width: '100%', padding: '12px', background: '#22c55e', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    ✅ All Voted - Proceed!
+                  <button 
+                    onClick={handleProceed}
+                    style={{ 
+                      width: '100%', 
+                      padding: '14px', 
+                      background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', 
+                      color: 'white', 
+                      border: 'none', 
+                      borderRadius: '8px', 
+                      fontSize: '16px', 
+                      fontWeight: 'bold', 
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(34, 197, 94, 0.4)',
+                      animation: 'pulse 2s infinite'
+                    }}
+                  >
+                    ✅ All Players Voted - Proceed to Results!
                   </button>
                 )}
               </div>
@@ -805,7 +824,9 @@ export default function GameRoom() {
                     Spy Word: <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{result.spyWord}</span>
                   </p>
                   <p style={{ margin: '6px 0', color: '#a855f7', fontSize: '13px' }}>
-                    The Spy was: <span style={{ fontWeight: 'bold' }}>{players.find(p => p.id === result.spyId)?.username}</span>
+                    {result.spyCount > 1 ? 'The Spies were:' : 'The Spy was:'} <span style={{ fontWeight: 'bold' }}>
+                      {result.spyIds ? result.spyIds.map(id => players.find(p => p.id === id)?.username).join(', ') : players.find(p => p.id === result.spyId)?.username}
+                    </span>
                   </p>
                 </div>
                 {!isGameOver && (
@@ -832,14 +853,26 @@ export default function GameRoom() {
               <h3 style={{ color: '#a855f7', marginBottom: '8px', fontSize: '14px' }}>How to Play</h3>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '12px', color: '#9ca3af' }}>
                 <li style={{ marginBottom: '6px' }}>1️⃣ Players get secret words</li>
-                <li style={{ marginBottom: '6px' }}>2️⃣ 1 player is the SPY</li>
-                <li style={{ marginBottom: '6px' }}>3️⃣ Discuss & find the spy</li>
-                <li style={{ marginBottom: '6px' }}>4️⃣ Vote to eliminate</li>
-                <li style={{ marginBottom: '6px' }}>5️⃣ Spy caught = Players win</li>
-                <li>6️⃣ Spy escapes = Spy wins</li>
+                <li style={{ marginBottom: '6px' }}>2️⃣ {spyCount > 1 ? `${spyCount} players are SPY` : '1 player is the SPY'}</li>
+                <li style={{ marginBottom: '6px' }}>3️⃣ Anyone can vote</li>
+                <li style={{ marginBottom: '6px' }}>4️⃣ Vote for spy = {basePoints} pts</li>
+                <li style={{ marginBottom: '6px' }}>5️⃣ Spy escapes = {basePoints * 2} pts</li>
+                <li>6️⃣ Vote for normal = 0 pts</li>
               </ul>
             </div>
           </div>
+        </div>
+
+        {/* ✅ COPYRIGHT SECTION */}
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '20px', 
+          marginTop: '24px',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          color: '#6b7280',
+          fontSize: '12px'
+        }}>
+          © 2026 Alven Oblefias. All rights reserved.
         </div>
       </div>
     );
@@ -847,30 +880,7 @@ export default function GameRoom() {
 
   // ==================== PLAYER UI ====================
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: isMobile ? '10px' : '16px', color: 'white' }}>
-      {/* 🔴 MOBILE MODE INDICATOR */}
-      {isMobile && (
-        <div style={{
-          position: 'fixed',
-          top: '10px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#ef4444',
-          color: 'white',
-          padding: '8px 16px',
-          borderRadius: '20px',
-          fontSize: '12px',
-          fontWeight: 'bold',
-          zIndex: 9999,
-          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
-          border: '2px solid white',
-          textTransform: 'uppercase',
-          letterSpacing: '1px'
-        }}>
-          📱 MOBILE MODE - Columns Stacked
-        </div>
-      )}
-      
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: isMobile ? '10px' : '16px', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <style>{`
         @keyframes shine { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
         @keyframes championPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
@@ -878,17 +888,13 @@ export default function GameRoom() {
         @keyframes podiumSlide { 0% { transform: translateY(40px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
         @keyframes confettiFall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
         @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.02); opacity: 0.9; } }
         
         .player-grid { display: grid; gap: 16px; }
         @media (min-width: 768px) { .player-grid { grid-template-columns: 1fr 2fr; } }
         @media (max-width: 767px) { 
           .player-grid { 
             grid-template-columns: 1fr;
-            /* 🔴 RED BORDER FOR MOBILE */
-            outline: 4px solid #ef4444;
-            outline-offset: 8px;
-            border-radius: 8px;
-            background: rgba(239, 68, 68, 0.05);
           }
         }
         
@@ -909,7 +915,7 @@ export default function GameRoom() {
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: isMobile ? '12px' : '14px', fontWeight: 'bold', color: '#a855f7' }}>{username}</div>
             <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-              {myRole === 'SPY' ? '🕵️ Spy' : '👤 Player'}
+              {myRole === 'SPY' ? '🕵️ Spy' : ' Player'}
             </div>
           </div>
           <div style={{ 
@@ -930,7 +936,7 @@ export default function GameRoom() {
         </div>
       </div>
 
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', flex: 1 }}>
         
         {/* FINAL STANDINGS */}
         {isGameOver && result && (
@@ -1009,7 +1015,7 @@ export default function GameRoom() {
 
             <div style={{ textAlign: 'center', marginTop: '20px' }}>
               <button onClick={() => router.push('/')} style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 16px rgba(168, 85, 247, 0.4)' }}>
-                🏠 Back to Homepage
+                 Back to Homepage
               </button>
             </div>
           </div>
@@ -1018,7 +1024,7 @@ export default function GameRoom() {
         <div className="player-grid">
           {/* LEFT SIDEBAR */}
           <div style={{ background: '#2d2d44', padding: isMobile ? '16px' : '20px', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
-            <h2 style={{ margin: '0 0 16px', fontSize: isMobile ? '16px' : '18px' }}>Players ({players.length})</h2>
+            <h2 style={{ margin: '0 0 16px', fontSize: isMobile ? '16px' : '18px' }}>Players ({players.length}) • {spyCount} {spyCount > 1 ? 'Spies' : 'Spy'}</h2>
 
             <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px 0' }}>
               {players.map((p) => (
@@ -1054,7 +1060,7 @@ export default function GameRoom() {
             {gameStatus === 'playing' && (
               <div style={{ textAlign: 'center', borderTop: '1px solid #4a4a6a', paddingTop: '16px' }}>
                 <div style={{ fontSize: isMobile ? '28px' : '36px', fontWeight: 'bold', color: timeRemaining < 60 ? '#ef4444' : 'white', marginBottom: '6px' }}>
-                  ⏱️ {formatTime(timeRemaining)}
+                  ️ {formatTime(timeRemaining)}
                 </div>
                 <p style={{ color: '#9ca3af', fontSize: '12px' }}>
                   {myRole === 'SPY' ? 'Listening Phase' : 'Discussion & Voting'}
@@ -1077,7 +1083,7 @@ export default function GameRoom() {
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ color: '#9ca3af', fontSize: isMobile ? '14px' : '16px', marginBottom: '12px' }}>Waiting for Admin to start...</p>
                   <div style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: '8px', fontSize: '13px', color: '#a855f7' }}>
-                    📊 {players.filter(p => !p.isAdmin).length} players = {maxRounds} rounds
+                    📊 {players.filter(p => !p.isAdmin).length} players = {maxRounds} rounds • {spyCount} {spyCount > 1 ? 'Spies' : 'Spy'} • {formatTime(timeDuration)}
                   </div>
                 </div>
               </div>
@@ -1116,6 +1122,66 @@ export default function GameRoom() {
                     <p style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: 'bold', margin: 0 }}>
                       You are: <span style={{ color: myRole === 'SPY' ? '#ef4444' : '#22c55e' }}>{myRole}</span>
                     </p>
+                    <p style={{ fontSize: '12px', color: '#9ca3af', margin: '8px 0 0 0' }}>
+                      {spyCount > 1 ? `There are ${spyCount} spies` : 'There is 1 spy'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ✅ REAL-TIME VOTING CHART - NOW VISIBLE IN PLAYER UI */}
+                {Object.keys(voteCounts).length > 0 && (
+                  <div style={{ background: '#1a1a2e', padding: isMobile ? '12px' : '16px', borderRadius: '10px', marginBottom: '20px' }}>
+                    <h3 style={{ margin: '0 0 16px', color: '#a855f7', textAlign: 'center', fontSize: '14px' }}>
+                       Real-Time Voting ({Object.values(voteCounts).reduce((a,b) => a+b, 0)}/{players.filter(p => !p.isAdmin).length} votes)
+                    </h3>
+                    <div style={{ display: 'grid', gap: '12px' }}>
+                      {players.filter(p => !p.isAdmin).map(player => {
+                        const votes = voteCounts[player.id] || 0;
+                        const totalVotes = Object.values(voteCounts).reduce((sum, v) => sum + v, 0);
+                        const percentage = totalVotes > 0 ? (votes / totalVotes) * 100 : 0;
+                        
+                        return (
+                          <div key={player.id}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                              <span style={{ fontWeight: 'bold', color: 'white', fontSize: '14px' }}>
+                                {player.username}
+                              </span>
+                              <span style={{ color: '#eab308', fontWeight: 'bold', fontSize: '14px' }}>
+                                {votes} vote{votes !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div style={{ 
+                              background: '#2d2d44', 
+                              borderRadius: '8px', 
+                              height: '32px', 
+                              overflow: 'hidden',
+                              border: '1px solid rgba(168, 85, 247, 0.2)'
+                            }}>
+                              <div style={{ 
+                                width: `${percentage}%`,
+                                background: 'linear-gradient(90deg, #a855f7 0%, #ec4899 100%)',
+                                height: '100%',
+                                transition: 'width 0.5s ease',
+                                borderRadius: '8px',
+                                opacity: votes > 0 ? 1 : 0.3
+                              }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ✅ SCORING STRUCTURE - NOW VISIBLE IN PLAYER UI */}
+                <div style={{ background: 'rgba(234, 179, 8, 0.1)', padding: '12px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #eab308' }}>
+                  <h3 style={{ margin: '0 0 8px', color: '#eab308', textAlign: 'center', fontSize: '14px' }}>
+                    💰 Scoring Structure
+                  </h3>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center' }}>
+                    <p style={{ margin: '4px 0' }}>✅ Vote for Spy: <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{basePoints} pts</span></p>
+                    <p style={{ margin: '4px 0' }}>❌ Vote for Normal: <span style={{ color: '#ef4444', fontWeight: 'bold' }}>0 pts</span></p>
+                    <p style={{ margin: '4px 0' }}>🕵️ Spy Escapes: <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{basePoints * 2} pts each</span></p>
                   </div>
                 </div>
                 
@@ -1172,13 +1238,13 @@ export default function GameRoom() {
                   <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', padding: isMobile ? '16px' : '20px', borderRadius: '10px' }}>
                     <div style={{ fontSize: isMobile ? '28px' : '36px', marginBottom: '8px' }}>🕵️</div>
                     <h3 style={{ color: '#ef4444', margin: '0 0 6px 0', fontSize: isMobile ? '16px' : '18px' }}>
-                      You are the SPY!
+                      You are {spyCount > 1 ? 'one of the' : 'the'} SPY{spyCount > 1 ? 'S' : ''}!
                     </h3>
                     <p style={{ color: '#9ca3af', margin: 0, fontSize: '13px' }}>
                       Listen carefully and try to blend in.
                     </p>
                     <p style={{ color: '#ef4444', marginTop: '8px', fontSize: '12px', fontWeight: 'bold' }}>
-                      You cannot vote. Stay hidden!
+                      {spyCount > 1 ? `There are ${spyCount} spies total` : 'Stay hidden!'}
                     </p>
                   </div>
                 )}
@@ -1198,7 +1264,7 @@ export default function GameRoom() {
                     Spy Word: <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '18px' }}>{result.spyWord}</span>
                   </p>
                   <p style={{ color: '#eab308', fontWeight: 'bold', fontSize: '16px', marginTop: '12px' }}>
-                    The Spy was: {players.find(p => p.id === result.spyId)?.username}
+                    {result.spyCount > 1 ? 'The Spies were:' : 'The Spy was:'} {result.spyIds ? result.spyIds.map(id => players.find(p => p.id === id)?.username).join(', ') : players.find(p => p.id === result.spyId)?.username}
                   </p>
                 </div>
                 <p style={{ color: '#9ca3af', fontSize: '16px' }}>
@@ -1208,6 +1274,18 @@ export default function GameRoom() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ✅ COPYRIGHT SECTION */}
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '20px', 
+        marginTop: '24px',
+        borderTop: '1px solid rgba(255,255,255,0.1)',
+        color: '#6b7280',
+        fontSize: '12px'
+      }}>
+        © 2026 Alven Oblefias. All rights reserved.
       </div>
 
       {showConfirmVote && (
@@ -1229,4 +1307,4 @@ export default function GameRoom() {
       )}
     </div>
   );
-}// Mobile fix Thu Jun 25 17:19:45 CST 2026
+}
