@@ -102,7 +102,7 @@ Output ONLY JSON: {"normalWord": "word1", "spyWord": "word2"}`
     };
   } catch (error) {
     clearTimeout(timeoutId);
-    console.error('❌ AI Generation FAILED:', error.message);
+    console.error(' AI Generation FAILED:', error.message);
     throw error;
   }
 }
@@ -170,7 +170,7 @@ io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id);
 
   socket.on('join-room', ({ roomId, username, avatar, isAdmin }) => {
-    console.log(` ${username} joining room: ${roomId}`);
+    console.log(`🚪 ${username} joining room: ${roomId}`);
     
     if (!rooms[roomId]) {
       rooms[roomId] = { 
@@ -417,11 +417,9 @@ io.on('connection', (socket) => {
       if (voteCounts[t] !== undefined) voteCounts[t]++; 
     });
     
-    // Find most voted player
     const sorted = Object.entries(voteCounts).sort((a,b) => b[1] - a[1]);
     const mostVotedId = sorted[0]?.[0];
     
-    // ✅ FIXED: Spy is caught if they have the MOST votes
     const spyCaught = room.spyIds.includes(mostVotedId);
 
     const basePoints = getBasePoints(room.currentRound);
@@ -430,26 +428,36 @@ io.on('connection', (socket) => {
     console.log(`🏁 Round ${room.currentRound} ended`);
     console.log(`   - Most voted: ${mostVotedId}, Spy caught: ${spyCaught}`);
     
-    // ✅ FIXED SCORING: Only give points to players who voted for spy
-    room.voteOrder.forEach(vote => {
-      const voter = room.players.find(p => p.id === vote.voterId);
-      if (!voter) return;
+    // ✅ EARLY VOTER BONUS: First voters get more points
+    const correctVoters = room.voteOrder
+      .filter(v => room.spyIds.includes(v.targetId))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    
+    const totalCorrectVoters = correctVoters.length;
+    
+    correctVoters.forEach((vote, index) => {
+      const player = room.players.find(p => p.id === vote.voterId);
+      if (!player) return;
       
-      // If voted for a spy, get points
-      if (room.spyIds.includes(vote.targetId)) {
-        voter.totalScore += basePoints;
-        console.log(`✅ ${voter.username} voted for SPY → gets ${basePoints} pts`);
-      } else {
-        console.log(`❌ ${voter.username} voted for NORMAL → gets 0 pts`);
+      // ✅ Bonus: First voter gets 100%, second gets 75%, third gets 50%, etc.
+      let bonusPercentage = 100;
+      if (totalCorrectVoters > 1) {
+        bonusPercentage = 100 - (index * 25); // 100%, 75%, 50%, 25%
+        if (bonusPercentage < 25) bonusPercentage = 25; // Minimum 25%
       }
+      
+      const bonusPoints = Math.round((basePoints * bonusPercentage) / 100);
+      const totalPoints = basePoints + bonusPoints;
+      
+      player.totalScore += totalPoints;
+      console.log(`✅ ${player.username} voted for SPY (position ${index + 1}) → gets ${totalPoints} pts (${basePoints} base + ${bonusPoints} bonus)`);
     });
     
-    // ✅ FIXED: Spy only gets points if NOT caught
     if (spyCaught) {
       room.spyIds.forEach(spyId => {
         const spyPlayer = room.players.find(p => p.id === spyId);
         if (spyPlayer) {
-          console.log(`🕵️ Spy ${spyPlayer.username} gets 0 pts (caught)`);
+          console.log(`️ Spy ${spyPlayer.username} gets 0 pts (caught)`);
         }
       });
     } else {
@@ -534,4 +542,4 @@ io.on('connection', (socket) => {
   });
 });
 
-console.log(` Socket Server running on port ${PORT}`);
+console.log(`🚀 Socket Server running on port ${PORT}`);
