@@ -1,9 +1,8 @@
+// socket-server.js
 require('dotenv').config();
 const { Server } = require('socket.io');
 
-const PORT = process.env.PORT || 3001;
-
-const io = new Server(PORT, { 
+const io = new Server(3001, { 
   cors: { origin: "*", methods: ["GET", "POST"] } 
 });
 
@@ -13,52 +12,44 @@ function calculateMaxRounds(playerCount) {
   return Math.floor((playerCount - 1) / 5) + 3;
 }
 
+function getBasePoints(currentRound) {
+  if (currentRound === 1) return 2;
+  if (currentRound === 2) return 4;
+  return 8;
+}
+
+function getSpyBasePoints(currentRound) {
+  if (currentRound === 1) return 6;
+  if (currentRound === 2) return 8;
+  return 12;
+}
+
 function getTimeDuration(playerCount) {
-  if (playerCount <= 5) return 3 * 60;
-  if (playerCount <= 10) return 6 * 60;
-  if (playerCount <= 15) return 8 * 60;
-  if (playerCount <= 20) return 10 * 60;
-  if (playerCount <= 30) return 15 * 60;
-  if (playerCount <= 40) return 20 * 60;
-  if (playerCount <= 50) return 25 * 60;
-  return 30 * 60;
+  if (playerCount <= 5) return 180;
+  if (playerCount <= 10) return 360;
+  if (playerCount <= 15) return 480;
+  if (playerCount <= 20) return 600;
+  if (playerCount <= 30) return 900;
+  if (playerCount <= 40) return 1200;
+  if (playerCount <= 50) return 1500;
+  return 1800;
 }
 
-function getBasePoints(currentRound, isSpy = false) {
-  if (isSpy) {
-    if (currentRound === 1) return 6;
-    if (currentRound === 2) return 12;
-    return 24;
-  } else {
-    if (currentRound === 1) return 2;
-    if (currentRound === 2) return 4;
-    return 8;
-  }
+function getNumberOfSpies(playerCount) {
+  return playerCount > 10 ? 2 : 1;
 }
 
-function getEarlyVotingBonus(round, position, totalPlayers) {
-  const isBelow5Players = totalPlayers < 5;
-  
-  if (round === 1) {
-    if (position === 0) return 3;
-    if (position === 1) return 2;
-    if (position === 2) return isBelow5Players ? 0 : 1;
-    return 0;
-  } else if (round === 2) {
-    if (position === 0) return 6;
-    if (position === 1) return 4;
-    if (position === 2) return isBelow5Players ? 1 : 2;
-    return 0;
-  } else {
-    if (position === 0) return 12;
-    if (position === 1) return 8;
-    if (position === 2) return isBelow5Players ? 2 : 4;
-    return 0;
+function getEarlyVotingBonus(voteOrderIndex, totalPlayers) {
+  if (voteOrderIndex === 0) return 4;
+  if (voteOrderIndex === 1) return 2;
+  if (voteOrderIndex === 2) {
+    return totalPlayers <= 3 ? 0 : 1;
   }
+  return 0;
 }
 
 async function generateWordsWithAI(category, difficulty, usedWords = []) {
-  console.log(` Generating AI words for: ${category} - ${difficulty}`);
+  console.log(`🤖 Generating AI words for: ${category} - ${difficulty}`);
   
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('YOUR')) {
     throw new Error('OpenAI API key not configured');
@@ -88,10 +79,13 @@ Category: "${category}"
 Difficulty: "${difficulty}"
 
 CRITICAL RULES:
-- Words must be in ENGLISH
-- Topics should be FAMILIAR TO FILIPINOS
+- Words must be in ENGLISH (not Tagalog)
+- Topics should be FAMILIAR TO FILIPINOS (Philippines context)
 - Words must be VERY SIMILAR and HARD TO DISTINGUISH
+- Same category/type, similar function or purpose
+- Common in Philippines daily life
 - MUST BE DIFFERENT from previously used words${previousWordsText}
+- Be CREATIVE and use UNIQUE pairs every time
 
 Output ONLY JSON: {"normalWord": "word1", "spyWord": "word2"}`
         }],
@@ -141,15 +135,9 @@ function broadcastRoomState(roomId) {
   if (!room) return;
   
   const allPlayers = room.players;
-  const nonAdminPlayers = room.players.filter(p => !p.isAdmin);
+  const normalPlayers = room.players.filter(p => p.isAdmin !== true);
   
-  const playersWhoCanVote = nonAdminPlayers.filter(p => p.role === 'NORMAL');
-  const playersWhoVotedCount = Object.keys(room.votes).length;
-  
-  const allNormalVoted = playersWhoCanVote.length > 0 && 
-                         playersWhoCanVote.every(p => room.votes[p.id] !== undefined);
-  
-  console.log(`📊 Broadcast Room ${roomId}: ${playersWhoVotedCount}/${playersWhoCanVote.length} voted - All: ${allNormalVoted}`);
+  console.log(` Broadcasting room state for ${roomId}: ${allPlayers.length} total, ${normalPlayers.length} normal`);
   
   if (room.adminId) {
     io.to(room.adminId).emit('room-state', {
@@ -166,13 +154,16 @@ function broadcastRoomState(roomId) {
       maxRounds: room.maxRounds,
       status: room.status,
       isAdmin: true,
-      allVoted: allNormalVoted
+      allVoted: Object.keys(room.votes).length === normalPlayers.length && normalPlayers.length > 0,
+      numberOfSpies: room.numberOfSpies,
+      timeDuration: room.timeDuration,
+      spyIds: room.spyIds
     });
   }
   
-  nonAdminPlayers.forEach(player => {
+  normalPlayers.forEach(player => {
     io.to(player.id).emit('room-state', {
-      players: nonAdminPlayers.map(p => ({
+      players: normalPlayers.map(p => ({
         id: p.id,
         username: p.username,
         avatar: p.avatar,
@@ -182,7 +173,9 @@ function broadcastRoomState(roomId) {
       currentRound: room.currentRound,
       maxRounds: room.maxRounds,
       status: room.status,
-      isAdmin: false
+      isAdmin: false,
+      numberOfSpies: room.numberOfSpies,
+      timeDuration: room.timeDuration
     });
   });
 }
@@ -191,6 +184,9 @@ io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id);
 
   socket.on('join-room', ({ roomId, username, avatar, isAdmin }) => {
+    console.log(`🚪 ${username} joining room: ${roomId}`);
+    console.log(`   - Avatar in join: ${avatar ? 'set' : 'null'}`);
+    
     if (!rooms[roomId]) {
       rooms[roomId] = { 
         players: [], 
@@ -198,7 +194,6 @@ io.on('connection', (socket) => {
         status: 'lobby', 
         votes: {}, 
         voteOrder: [],
-        spyId: null,
         spyIds: [], 
         currentWord: null, 
         usedWords: [],
@@ -208,17 +203,22 @@ io.on('connection', (socket) => {
         currentRound: 1, 
         maxRounds: 3,
         nextRoundTimer: null, 
-        nextRoundTimeRemaining: 30
+        nextRoundTimeRemaining: 30,
+        numberOfSpies: 1,
+        timeDuration: 300
       };
     }
     
     const room = rooms[roomId];
+    
     const existingPlayerIndex = room.players.findIndex(p => p.id === socket.id);
     
     if (existingPlayerIndex !== -1) {
+      console.log(`   - Updating existing player`);
       room.players[existingPlayerIndex].username = username;
       if (avatar) room.players[existingPlayerIndex].avatar = avatar;
     } else if (!room.adminId) {
+      console.log(`   - First player! Becoming ADMIN 👑`);
       room.adminId = socket.id;
       room.hostId = socket.id;
       room.players.push({ 
@@ -231,6 +231,7 @@ io.on('connection', (socket) => {
         votedFor: null 
       });
     } else {
+      console.log(`   - Adding as normal player`);
       room.players.push({ 
         id: socket.id, 
         username, 
@@ -244,27 +245,48 @@ io.on('connection', (socket) => {
     
     const playerCount = room.players.filter(p => !p.isAdmin).length;
     room.maxRounds = calculateMaxRounds(playerCount);
+    room.numberOfSpies = getNumberOfSpies(playerCount);
+    room.timeDuration = getTimeDuration(playerCount);
+    room.timeRemaining = room.timeDuration;
+    
+    console.log(`   - Player count: ${playerCount}, Max rounds: ${room.maxRounds}, Spies: ${room.numberOfSpies}, Time: ${room.timeDuration}s`);
     
     socket.join(roomId);
+    console.log(`   - Socket joined room ${roomId}`);
+    
     broadcastRoomState(roomId);
     
     const isNowAdmin = socket.id === room.adminId;
+    console.log(`   - Sending joined-success to ${username} (isAdmin: ${isNowAdmin})`);
     socket.emit('joined-success', { 
       roomId, 
       username,
       isAdmin: isNowAdmin,
-      maxRounds: room.maxRounds
+      maxRounds: room.maxRounds,
+      numberOfSpies: room.numberOfSpies,
+      timeDuration: room.timeDuration
     });
+    
+    console.log(`✅ ${username} successfully joined room ${roomId}\n`);
   });
 
   socket.on('update-avatar', ({ roomId, avatar }) => {
+    console.log(` Avatar update from ${socket.id} in room ${roomId}`);
+    console.log(`   - Avatar length: ${avatar ? avatar.length : 0} chars`);
+    
     const room = rooms[roomId];
-    if (!room) return;
+    if (!room) {
+      console.log(`   - ❌ Room not found`);
+      return;
+    }
     
     const player = room.players.find(p => p.id === socket.id);
     if (player) {
       player.avatar = avatar;
+      console.log(`   - ✅ Avatar updated for ${player.username}`);
       broadcastRoomState(roomId);
+    } else {
+      console.log(`   - ❌ Player not found in room`);
     }
   });
 
@@ -279,15 +301,17 @@ io.on('connection', (socket) => {
     }
 
     room.maxRounds = calculateMaxRounds(playerCount);
-    const timeDuration = getTimeDuration(playerCount);
+    room.numberOfSpies = getNumberOfSpies(playerCount);
+    room.timeDuration = getTimeDuration(playerCount);
 
-    console.log(`🎮 Starting Round ${room.currentRound}/${room.maxRounds}`);
+    console.log(`🎮 Starting Round ${room.currentRound}/${room.maxRounds} - ${category} ${difficulty}`);
     io.to(roomId).emit('game-loading', { 
       message: `🤖 AI is generating unique words... (Round ${room.currentRound}/${room.maxRounds})` 
     });
 
     try {
       const wordData = await generateWordsWithAI(category, difficulty, room.usedWords || []);
+      console.log('✅ Final words:', wordData);
 
       if (!room.usedWords) room.usedWords = [];
       room.usedWords.push(wordData.normalWord, wordData.spyWord);
@@ -299,20 +323,19 @@ io.on('connection', (socket) => {
       room.votes = {};
       room.voteOrder = [];
       room.currentWord = wordData;
-      room.timeRemaining = timeDuration;
+      room.timeRemaining = room.timeDuration;
 
       const gamePlayers = room.players.filter(p => !p.isAdmin);
-      const spyCount = playerCount > 10 ? 2 : 1;
+      
       const shuffled = shuffleArray(gamePlayers);
       const spyIds = [];
-      for (let i = 0; i < spyCount; i++) {
+      
+      for (let i = 0; i < room.numberOfSpies; i++) {
         spyIds.push(shuffled[i].id);
       }
       
       room.spyIds = spyIds;
-      room.spyId = spyIds[0];
-      
-      console.log(`🕵️ NEW Spy(s): ${spyIds.length} spy(s) - IDs: ${spyIds.join(', ')}`);
+      console.log(`🕵️ Spies for Round ${room.currentRound}: ${spyIds.map(id => gamePlayers.find(p => p.id === id)?.username).join(', ')} (${spyIds.length} spies)`);
 
       room.players.forEach(p => {
         if (p.isAdmin) { p.role = null; return; }
@@ -340,20 +363,25 @@ io.on('connection', (socket) => {
         }
       }, 1000);
 
+      const basePoints = getBasePoints(room.currentRound);
+      const spyBasePoints = getSpyBasePoints(room.currentRound);
+
       io.to(roomId).emit('round-started', { 
         category: room.currentWord.category, 
         currentRound: room.currentRound,
         maxRounds: room.maxRounds,
         normalWord: room.currentWord.normalWord,
         spyWord: room.currentWord.spyWord,
-        basePoints: getBasePoints(room.currentRound, false),
-        timeRemaining: timeDuration
+        basePoints: basePoints,
+        spyBasePoints: spyBasePoints,
+        numberOfSpies: room.numberOfSpies
       });
       
+      console.log('📤 Sent to clients - Normal:', room.currentWord.normalWord, 'Spy:', room.currentWord.spyWord);
     } catch (error) {
       console.error('❌ Failed to start round:', error.message);
       io.to(room.adminId).emit('game-error', { 
-        message: `AI Error: ${error.message}` 
+        message: `AI Error: ${error.message}. Check terminal for details.` 
       });
       room.status = 'lobby';
       broadcastRoomState(roomId);
@@ -366,64 +394,61 @@ io.on('connection', (socket) => {
     if (!voter || room.status !== 'playing') return;
     
     if (voter.role === 'SPY') {
-      console.log(`❌ SPY ${voter.username} tried to vote - BLOCKED!`);
+      console.log('❌ Spy cannot vote');
       return;
     }
 
-    console.log(`\n️ VOTE CAST:`);
-    console.log(`   Voter: ${voter.username} (${socket.id})`);
-    console.log(`   Target: ${room.players.find(p => p.id === targetId)?.username}`);
-    
     voter.votedFor = targetId;
     room.votes[socket.id] = targetId;
     
-    room.voteOrder = room.voteOrder.filter(v => v.voterId !== socket.id);
     room.voteOrder.push({
       voterId: socket.id,
       targetId: targetId,
       timestamp: Date.now()
     });
 
-    room.voteOrder.sort((a, b) => a.timestamp - b.timestamp);
-
-    const nonAdminPlayers = room.players.filter(p => !p.isAdmin);
-    const normalPlayers = nonAdminPlayers.filter(p => p.role === 'NORMAL');
+    const playersOnly = room.players.filter(p => !p.isAdmin);
+    const normalPlayers = playersOnly.filter(p => p.role === 'NORMAL');
     
     const voteCounts = {};
-    nonAdminPlayers.forEach(p => { voteCounts[p.id] = 0; });
+    playersOnly.forEach(p => { voteCounts[p.id] = 0; });
     Object.values(room.votes).forEach(t => { 
       if (voteCounts[t] !== undefined) voteCounts[t]++; 
     });
 
-    const allNormalVoted = normalPlayers.length > 0 && 
-                           normalPlayers.every(p => {
-                             const hasVoted = room.votes[p.id] !== undefined;
-                             console.log(`   Player ${p.username} (${p.id}): ${hasVoted ? 'VOTED ✓' : 'NOT VOTED '}`);
-                             return hasVoted;
-                           });
+    const allVoted = Object.keys(room.votes).length === normalPlayers.length && normalPlayers.length > 0;
     
-    console.log(`\n VOTE STATUS:`);
-    console.log(`   Total normal players: ${normalPlayers.length}`);
-    console.log(`   Total votes: ${Object.keys(room.votes).length}`);
-    console.log(`   All voted: ${allNormalVoted ? '✅ YES' : '❌ NO'}`);
-    console.log(`   Vote counts:`, voteCounts);
-    console.log('');
+    let unanimousVote = null;
+    if (allVoted) {
+      const firstVote = Object.values(room.votes)[0];
+      if (Object.values(room.votes).every(v => v === firstVote)) {
+        unanimousVote = firstVote;
+      }
+    }
+
+    console.log(`📊 Votes: ${Object.keys(room.votes).length}/${normalPlayers.length} normal players voted`);
+    console.log(`   - Vote counts:`, voteCounts);
+    console.log(`   - Vote order:`, room.voteOrder.map(v => ({
+      voter: playersOnly.find(p => p.id === v.voterId)?.username,
+      target: playersOnly.find(p => p.id === v.targetId)?.username
+    })));
 
     if (room.adminId) {
       io.to(room.adminId).emit('vote-update', { 
         voteCounts, 
-        allVoted: allNormalVoted 
+        unanimousVote, 
+        allVoted,
+        voteOrder: room.voteOrder
       });
     }
     
     normalPlayers.forEach(player => {
       io.to(player.id).emit('vote-update', { 
         voteCounts,
-        allVoted: allNormalVoted 
+        allVoted,
+        voteOrder: room.voteOrder
       });
     });
-    
-    broadcastRoomState(roomId);
   });
 
   socket.on('end-voting', ({ roomId }) => endRound(roomId));
@@ -441,81 +466,122 @@ io.on('connection', (socket) => {
 
     const playersOnly = room.players.filter(p => !p.isAdmin);
     const normalPlayers = playersOnly.filter(p => p.role === 'NORMAL');
-    const spyIds = room.spyIds && room.spyIds.length > 0 ? room.spyIds : [room.spyId];
-    const totalPlayers = playersOnly.length;
+    const normalPlayerCount = normalPlayers.length;
     
-    const normalBasePoints = getBasePoints(room.currentRound, false);
-    const spyBasePoints = getBasePoints(room.currentRound, true);
-
-    console.log(`\n🏁 ========== ROUND ${room.currentRound} ENDED ==========`);
-    console.log(`Total players: ${totalPlayers}, Normal: ${normalPlayers.length}, Spies: ${spyIds.length}`);
-
-    const correctVoters = room.voteOrder
-      .filter(vote => spyIds.includes(vote.targetId))
-      .filter((vote, index, self) => 
-        index === self.findIndex(v => v.voterId === vote.voterId)
-      );
-
-    console.log(`\n📊 Correct voters (in order):`);
-    correctVoters.forEach((v, i) => {
-      const voter = room.players.find(p => p.id === v.voterId);
-      console.log(`   #${i + 1}: ${voter?.username}`);
+    const voteCounts = {};
+    playersOnly.forEach(p => { voteCounts[p.id] = 0; });
+    Object.values(room.votes).forEach(t => { 
+      if (voteCounts[t] !== undefined) voteCounts[t]++; 
     });
+    
+    let mostVotedId = null;
+    let votingRule = '';
+    
+    if (normalPlayerCount === 2) {
+      const votes = Object.values(room.votes);
+      if (votes[0] === votes[1]) {
+        mostVotedId = votes[0];
+        votingRule = 'Unanimous (2 players)';
+      } else {
+        const firstVote = room.voteOrder[0];
+        mostVotedId = firstVote ? firstVote.targetId : null;
+        votingRule = 'First voter wins (2 players)';
+      }
+    } else {
+      const sorted = Object.entries(voteCounts).sort((a,b) => b[1] - a[1]);
+      mostVotedId = sorted[0]?.[0];
+      votingRule = 'Majority rules';
+    }
+    
+    const spyCaught = room.spyIds.includes(mostVotedId);
 
-    const spyCaught = correctVoters.length > 0;
-
+    const basePoints = getBasePoints(room.currentRound);
+    const spyBasePoints = getSpyBasePoints(room.currentRound);
+    
+    console.log(`🏁 Round ${room.currentRound} ended - Normal Base: ${basePoints}pts, Spy Base: ${spyBasePoints}pts`);
+    console.log(`   - Most voted: ${playersOnly.find(p => p.id === mostVotedId)?.username}`);
+    console.log(`   - Spy caught: ${spyCaught}`);
+    console.log(`   - Spy IDs:`, room.spyIds);
+    console.log(`   - All votes:`, room.voteOrder.map(v => ({
+      voter: playersOnly.find(p => p.id === v.voterId)?.username,
+      target: playersOnly.find(p => p.id === v.targetId)?.username,
+      isSpy: room.spyIds.includes(v.targetId)
+    })));
+    
     if (spyCaught) {
-      console.log(`\n✅ SPY CAUGHT! Awarding points...`);
+      // Only give points to players who voted for the spy
+      const correctVoters = room.voteOrder
+        .filter(v => room.spyIds.includes(v.targetId))
+        .sort((a, b) => a.timestamp - b.timestamp);
+      
+      console.log(`✅ Correct voters (${correctVoters.length}): ${correctVoters.map(v => playersOnly.find(p => p.id === v.voterId)?.username).join(', ')}`);
+      
+      // Reset all player scores for this round first (to prevent double counting)
+      playersOnly.forEach(p => {
+        if (!room.spyIds.includes(p.id)) {
+          p.roundScore = 0;
+        }
+      });
       
       correctVoters.forEach((vote, index) => {
         const player = room.players.find(p => p.id === vote.voterId);
         if (!player) return;
         
-        const bonusPoints = getEarlyVotingBonus(room.currentRound, index, totalPlayers);
-        const totalPoints = normalBasePoints + bonusPoints;
+        const earlyBonus = getEarlyVotingBonus(index, normalPlayerCount);
+        const totalPoints = basePoints + earlyBonus;
         
         player.totalScore += totalPoints;
-        
-        console.log(`   ${player.username} (#${index + 1}): ${normalBasePoints} base + ${bonusPoints} bonus = ${totalPoints} pts`);
+        player.roundScore = totalPoints;
+        console.log(`📊 ${player.username} gets ${totalPoints} pts (${basePoints} base + ${earlyBonus} early voting bonus)`);
       });
       
-      spyIds.forEach(spyId => {
+      room.spyIds.forEach(spyId => {
         const spyPlayer = room.players.find(p => p.id === spyId);
         if (spyPlayer) {
-          console.log(`   🕵️ Spy ${spyPlayer.username}: 0 pts (caught)`);
+          spyPlayer.roundScore = 0;
+          console.log(`🕵️ Spy ${spyPlayer.username} gets 0 pts (caught)`);
         }
       });
     } else {
-      console.log(`\n️ SPY ESCAPED!`);
+      // Spy escaped - only spies get points
+      playersOnly.forEach(p => {
+        p.roundScore = 0;
+      });
       
-      spyIds.forEach(spyId => {
+      room.spyIds.forEach(spyId => {
         const spyPlayer = room.players.find(p => p.id === spyId);
         if (spyPlayer) {
           spyPlayer.totalScore += spyBasePoints;
-          console.log(`   🕵️ Spy ${spyPlayer.username}: ${spyBasePoints} pts (escaped)`);
+          spyPlayer.roundScore = spyBasePoints;
+          console.log(`🕵️ Spy ${spyPlayer.username} gets ${spyBasePoints} pts (escaped)`);
         }
       });
       
       normalPlayers.forEach(p => {
-        console.log(`   ${p.username}: 0 pts (spy escaped)`);
+        console.log(`📊 ${p.username} gets 0 pts (spy escaped)`);
       });
     }
-    
-    console.log(`========================================\n`);
 
     const isGameOver = room.currentRound >= room.maxRounds;
 
     io.to(roomId).emit('round-ended', {
-      spyId: room.spyId, 
-      spyIds: spyIds,
+      spyIds: room.spyIds, 
       spyCaught, 
       normalWord: room.currentWord.normalWord, 
       spyWord: room.currentWord.spyWord,
       isGameOver, 
       currentRound: room.currentRound,
       maxRounds: room.maxRounds,
-      basePoints: normalBasePoints,
-      spyEscapePoints: spyBasePoints
+      basePoints: basePoints,
+      spyBasePoints: spyBasePoints,
+      votingRule: votingRule,
+      correctVoters: room.voteOrder.filter(v => room.spyIds.includes(v.targetId)).map(v => v.voterId),
+      playerScores: playersOnly.map(p => ({
+        id: p.id,
+        username: p.username,
+        roundScore: p.roundScore || 0,
+        totalScore: p.totalScore || 0
+      }))
     });
     
     broadcastRoomState(roomId);
@@ -561,6 +627,8 @@ io.on('connection', (socket) => {
       const playerCount = room.players.filter(p => !p.isAdmin).length;
       if (playerCount >= 3) {
         room.maxRounds = calculateMaxRounds(playerCount);
+        room.numberOfSpies = getNumberOfSpies(playerCount);
+        room.timeDuration = getTimeDuration(playerCount);
       }
       
       if (room.players.length === 0 && !room.adminId) {
@@ -574,4 +642,4 @@ io.on('connection', (socket) => {
   });
 });
 
-console.log(`🚀 Socket Server running on port ${PORT}`);
+console.log(' Socket Server running on port 3001');
